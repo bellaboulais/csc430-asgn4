@@ -23,9 +23,8 @@
 (tstruct lamC ([arg : Symbol] [body : ExprC]))
 (tstruct appC ([f : ExprC] [args : (Listof ExprC)]))
 
-(define-type Clauses (U clause clauses)) ; inside locals... ex. : add6 = {curradd 6} : 
+; inside locals... ex. : add6 = {curradd 6} : 
 (tstruct clause ([id : Symbol] [expr : ExprC]))
-(tstruct clauses ([id : Symbol] [expr : ExprC] [rest : Clauses]))
 
 (define-type Value (U numV boolV strV closV primV))
 (tstruct numV ([n : Number]))
@@ -78,6 +77,7 @@
     [(? real? n) (numC n)]                            
     [(? symbol? s) (idC s)] ; variable reference cant be named operator 
     [(? string? str) (strC str)]
+    ;[(list 'locals ': clause ': body)]
     
     
     [else (error 'parse "ZODE: Invalid expression")]))  
@@ -91,13 +91,13 @@
 
 
 (check-equal? (parse '{locals : x = 2 : y = 6 : {+ x y}})
-              (appC (lamC (clauses (idC 'x) (idC 'y))
-                          (appC (idC '+) (list (idC 'x) (idC 'y))))
+              (appC (lamC (clause 'x (numC 2) (clause 'y (numC 6))
+                          (appC (idC '+) (list (idC 'x) (idC 'y)))))
                     (list (numC 2) (numC 6))))
               ;{{lamb : x y : {+ x y}} 2 6})
 
 (check-equal? (parse '{locals : z = {+ 9 14} : y = 98 : {+ z y}})
-              (appC (lamC (clauses (idC 'z) (idC 'y))
+              (appC (lamC (clause (idC 'z) (idC 'y))
                           (appC (idC '+) (list (idC 'z) (idC 'y))))
                     (list (appC (idC '+) (list (numC 9) (numC 14))) (numC 98))))
               ; {{lamb : z y : {+ z y}} {+ 9 14} 98})
