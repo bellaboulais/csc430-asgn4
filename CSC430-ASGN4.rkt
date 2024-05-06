@@ -58,26 +58,25 @@
 ;  RETURNS: Value
 ;  PURPOSE: lookup the value of x in the environment env
 (: lookup (Symbol Env -> Value))
-(define (lookup x env)
+(define (lookup [x : Symbol] [env : Env])
   (cond
     [(empty? env) (error 'lookup "ZODE: Variable not found")]
     [(eq? x (first (first env))) (second (first env))]
     [else (lookup x (rest env))]))
 
-; extend-env NOT COMPLETE (needs more test cases)
+; extend-env NOT COMPLETE (needs more test cases and doesn't work)
 ;  PARAMS:  clauses : Clauses
 ;           env : Env
 ;  RETURNS: Env
-;  PURPOSE: extend the environment env with the bindings in clauses
+;  PURPOSE: extend the environment env with the definitions in another environment.
 (: extend-env (Clauses Env -> Env))
-(define (extend-env clauses env)
-  (cond
-    [(empty? clauses) env]
-    [else (extend-env (rest clauses) 
-                      (cons (list (clause-id (first clauses)) 
-                                  (interp (clause-expr (first clauses) env))) 
-          env))]))
-; top-interpt NOT COMPLETE
+(define (extend-env [clses : Clauses] [env : Env])
+  (match clses
+    [(clause id expr) (cons (list id (interp expr env)) env)]
+    [(clauses id expr rest) (extend-env rest (cons (list id (interp expr env)) env))]))
+
+
+; top-interp NOT COMPLETE
 (: top-interp (Sexp -> String)) 
 ;   PARAMS:  s : Sexp
 ;   RETURNS: String
@@ -90,7 +89,7 @@
 
 
 
-; interp
+; interp NOT COMPLETE (doesn't work and needs test cases)
 (: interp (ExprC Env -> Value))
 ;   PARAMS:   e:    ExprC           the expression to interpret
 ;             env:  Envrionment     list of functions defined in the current environment
@@ -105,9 +104,33 @@
                             (interp then env)
                             (interp else env))]
     [(locals clauses body) (interp body (extend-env clauses env))]
-    [(lamC arg body) (closV arg body)]
-    [(appC f args) (apply (interp f env) (map (λ (arg) (interp arg env)) args))]
+    [(lamC arg body) (closV arg body env)]
+    [(appC f args) (match (interp f env)
+                     [(closV arg body env2) (interp body (cons (list arg (interp (first args) env)) env2))]
+                     [(primV p) (interp-primitive p args env)]
+                     [else (error 'interp "ZODE: Invalid application: ~e" e)])]
     [else (error 'interp "ZODE: Invalid expression")]))
+
+; interp-primitive
+(: interp-primitive (Symbol (Listof ExprC) Env -> Value))
+;   PARAMS:   p:    Symbol          the primitive to interpret
+;             args: (Listof Value)  the arguments to the primitive
+;   RETURNS:  Value
+;   PURPOSE:  helper for interp to interpret primitives
+(define (interp-primitive [p : Symbol][exprs : (Listof ExprC)] [env : Env])
+  (match p 
+    ['+ (num-op (interp (first exprs) env) (interp (second exprs) env) +)]
+    ['- (num-op (interp (first exprs) env) (interp (second exprs) env) -)]
+    ['* (num-op (interp (first exprs) env) (interp (second exprs) env) *)]
+    ['/ (num-op (interp (first exprs) env) (interp (second exprs) env) /)]))
+
+(define (num-op [l : Value] [r : Value] [operator : (Number Number -> Number)]) : Value
+  (cond
+    [(and (numV? l) (numV? r))
+     (numV (operator (numV-n l) (numV-n r)))]
+    [else
+     (error 'num+ "ZODE: primitive + expects numbers as arguments, given ~e and ~e" l r)]))
+
 
 
 
