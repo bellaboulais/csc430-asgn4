@@ -50,9 +50,11 @@
 ; top level environemnt primitive that checks for +, -, *, /, <=, equal?, true, false, error v
 ; need a eval prim helper function? parsed as appC and interpreted as a primitive
 
-;; FUNCTIONS
+; ----------------------------- ;
+; ----- INTERP FUNCTIONS ------ ;
+; ----------------------------- ;
 
-; lookup NOT COMPLETE (needs more test cases)
+; lookup NOT COMPLETE (waiting on more primitives to write more test cases)
 ;  PARAMS:  x : Symbol
 ;           env : Env
 ;  RETURNS: Value
@@ -60,11 +62,11 @@
 (: lookup (Symbol Env -> Value))
 (define (lookup [x : Symbol] [env : Env])
   (cond
-    [(empty? env) (error 'lookup "ZODE: Variable not found")]
+    [(empty? env) (error 'lookup "ZODE: Variable not found ~e" x)]
     [(eq? x (first (first env))) (second (first env))]
     [else (lookup x (rest env))]))
 
-; extend-env NOT COMPLETE (needs more test cases and doesn't work)
+; extend-env NOT COMPLETE (waiting on more primitives to write more test cases)
 ;  PARAMS:  clauses : Clauses
 ;           env : Env
 ;  RETURNS: Env
@@ -89,7 +91,7 @@
 
 
 
-; interp NOT COMPLETE (doesn't work and needs test cases)
+; interp NOT COMPLETE (needs more test cases)
 (: interp (ExprC Env -> Value))
 ;   PARAMS:   e:    ExprC           the expression to interpret
 ;             env:  Envrionment     list of functions defined in the current environment
@@ -109,7 +111,7 @@
                      [(closV arg body env2) (interp body (cons (list arg (interp (first args) env)) env2))]
                      [(primV p) (interp-primitive p args env)]
                      [else (error 'interp "ZODE: Invalid application: ~e" e)])]
-    [else (error 'interp "ZODE: Invalid expression")]))
+    [else (error 'interp "ZODE: Invalid expression ~e" e)]))
 
 ; interp-primitive
 (: interp-primitive (Symbol (Listof ExprC) Env -> Value))
@@ -119,12 +121,19 @@
 ;   PURPOSE:  helper for interp to interpret primitives
 (define (interp-primitive [p : Symbol][exprs : (Listof ExprC)] [env : Env])
   (match p 
-    ['+ (num-op (interp (first exprs) env) (interp (second exprs) env) +)]
-    ['- (num-op (interp (first exprs) env) (interp (second exprs) env) -)]
-    ['* (num-op (interp (first exprs) env) (interp (second exprs) env) *)]
-    ['/ (num-op (interp (first exprs) env) (interp (second exprs) env) /)]))
+    ['+ (2num-op (interp (first exprs) env) (interp (second exprs) env) +)]
+    ['- (2num-op (interp (first exprs) env) (interp (second exprs) env) -)]
+    ['* (2num-op (interp (first exprs) env) (interp (second exprs) env) *)]
+    ['/ (2num-op (interp (first exprs) env) (interp (second exprs) env) /)]))
 
-(define (num-op [l : Value] [r : Value] [operator : (Number Number -> Number)]) : Value
+; 2num-op
+(: 2num-op (Value Value (Number Number -> Number) -> Value))
+;   PARAMS:   l:    Value           the left operand
+;             r:    Value           the right operand
+;             operator: (Number Number -> Number) the operator to apply
+;   RETURNS:  Value
+;   PURPOSE:  helper for interp-primitive to apply a binary operator to two numbers
+(define (2num-op [l : Value] [r : Value] [operator : (Number Number -> Number)]) : Value
   (cond
     [(and (numV? l) (numV? r))
      (numV (operator (numV-n l) (numV-n r)))]
@@ -132,9 +141,9 @@
      (error 'num+ "ZODE: primitive + expects numbers as arguments, given ~e and ~e" l r)]))
 
 
-
-
-
+; ---------------------------- ;
+; ----- PARSER FUNCTIONS ----- ;
+; ---------------------------- ;
 ; (define-type ExprC (U numC idC strC ifC locals lamb appC))         
 ; parse  
 (: parse (Sexp -> ExprC))
@@ -146,17 +155,95 @@
     [(? real? n) (numC n)]                            
     [(? symbol? s) (idC s)] ; variable reference cant be named operator 
     [(? string? str) (strC str)]
-    
-    
     [else (error 'parse "ZODE: Invalid expression")]))  
 
+; ---------------------- ;
+; ----- TEST CASES ----- ;
+; ---------------------- ;
 
+; ----- defs for test cases ----- ;
+; test parsed functions
+(define testpfunc0 (clause 'curradd (lamC 'x (appC (idC '+) (list (idC 'x) (idC 'x))))))
+(define testpfunc1 (clause 'add6 (appC (idC 'curradd) (list (numC 6)))))
+
+;   test environments with numbers
+(define testenv1 (list (list 'x (numV 5))))
+(define testenv2 (list (list 'x (numV 5)) (list 'y (numV 6))))
+;   test environments with functions
+(define testenv3 (list (list 'x (closV 'x (idC 'x) testenv1))))
+(define testenv4 (list (list 'x (closV 'x (idC 'x) top-env))))
+;   test environments with strings
+(define testenv5 (list (list 'x (strV "hello"))))
+;   test environments with booleans
+(define testenv6 (list (list 'x (boolV #t))))
+(define testenv7 (list (list 'x (boolV #f))))
+
+; ----- INTERPRETER TEST CASES ----- ;
+
+; ----- lookup test cases -----
+;   test lookup with numbers
+(check-equal? (lookup 'x (list (list 'x (numV 5)))) (numV 5))
+(check-equal? (lookup 'x (list (list 'x (strV "hello")))) (strV "hello"))
+;   test lookup with the primitive functions
+(check-equal? (lookup '+ top-env) (primV '+))
+(check-equal? (lookup '- top-env) (primV '-))
+(check-equal? (lookup '* top-env) (primV '*))
+(check-equal? (lookup '/ top-env) (primV '/))
+;   test lookup with functions
+(check-equal? (lookup 'x testenv3) (closV 'x (idC 'x) testenv1))
+(check-equal? (lookup 'x testenv4) (closV 'x (idC 'x) top-env))
+;   test lookup with strings
+(check-equal? (lookup 'x testenv5) (strV "hello"))
+;   test lookup with booleans
+(check-equal? (lookup 'x testenv6) (boolV #t))
+(check-equal? (lookup 'x testenv7) (boolV #f))
+;   test lookup with a variable not found
+(check-exn #px"ZODE: Variable not found" (λ () (lookup 'y (list (list 'x (numV 5))))))
+
+; ----- extend-env test cases -----
+; test extending from top level environment
+(check-equal? (extend-env (clause 'x (numC 5)) top-env) 
+              (list (list 'x (numV 5)) 
+                    (list '+ (primV '+)) 
+                    (list '- (primV '-)) 
+                    (list '* (primV '*)) 
+                    (list '/ (primV '/))))
+; test extending testenv1 with a number
+(check-equal? (extend-env (clause 'y (numC 6)) testenv1) 
+              (list (list 'y (numV 6)) 
+                    (list 'x (numV 5))))
+; test extending testenv1 with a function
+(check-equal? (extend-env testpfunc0 testenv1) 
+              (list (list 'curradd (closV 'x (appC (idC '+) (list (idC 'x) (idC 'x))) testenv1))
+                    (list 'x (numV 5))))
+; test extending testenv1 with a string
+(check-equal? (extend-env (clause 'y (strC "hello")) testenv1) 
+              (list (list 'y (strV "hello")) 
+                    (list 'x (numV 5))))
+
+; ----- interp test cases -----
+; test interp with numbers
+(check-equal? (interp (numC 5) top-env) (numV 5))
+; test interp with strings
+(check-equal? (interp (strC "hello") top-env) (strV "hello"))
+; test interp with boolean expressions
+(check-equal? (interp (ifC (idC 'x) (numC 5) (numC 6)) testenv6) (numV 5))
+(check-equal? (interp (ifC (idC 'x) (numC 5) (numC 6)) testenv7) (numV 6))
+; test interp with functions
+(check-equal? (interp (lamC 'x (idC 'x)) top-env) (closV 'x (idC 'x) top-env))
+; test interp with primitive functions
+(check-equal? (interp (appC (idC '+) (list (numC 5) (numC 6))) top-env) (numV 11))
+(check-equal? (interp (appC (idC '-) (list (numC 5) (numC 6))) top-env) (numV -1))
+(check-equal? (interp (appC (idC '*) (list (numC 5) (numC 6))) top-env) (numV 30))
+(check-equal? (interp (appC (idC '/) (list (numC 6) (numC 5))) top-env) (numV 1.2))
+
+
+; ----- PARSER TEST CASES ----- ;
 
 ; parse test cases desugars locals into lambs?
 (check-equal? (parse 3) (numC 3))
 (check-equal? (parse 'x) (idC 'x))
 (check-equal? (parse "30") (strC "30"))
-
 
 ; (check-equal? (parse '{locals : x = 2 : y = 6 : {+ x y}})
 ;               (appC (lamC (clauses (idC 'x) (idC 'y))
