@@ -32,7 +32,7 @@
 (tstruct strV ([s : String]))                       ; strV: string value
 (tstruct closV ([arg : Symbol] [body : ExprC] [env : Env])) ; closV: closure value
 (tstruct primV ([p : Symbol]))                      ; primV: primitive value
-(tstruct numV ([n : Number]))                       ; numV: number value
+(tstruct numV ([n : Real]))                         ; numV: number value
 
 (define-type Env (Listof (List Symbol Value)))
 
@@ -42,8 +42,8 @@
                       (list '/ (primV '/))
                       ; (list '<= (primV '<=))
                       ; (list 'equal? (primV 'equal?))
-                      ; (list 'true (boolV #t))
-                      ; (list 'false (boolV #f))
+                      (list 'true (boolV #t))
+                      (list 'false (boolV #f))
                       ; (list 'error (primV 'error))
                       ))
 
@@ -78,7 +78,7 @@
     [(clauses id expr rest) (extend-env rest (cons (list id (interp expr env)) env))]))
 
 
-; top-interp NOT COMPLETE
+; top-interp NOT COMPLETE (no test cases)
 (: top-interp (Sexp -> String)) 
 ;   PARAMS:  s : Sexp
 ;   RETURNS: String
@@ -93,13 +93,11 @@
 ;   PURPOSE:  convert a value to a string
 (define (serialize v)
   (match v
-    [(numV n) (number->string n)]
-    [(boolV b) (if b "#t" "#f")]
+    [(numV n) (~v n)]
+    [(boolV b) (if b "true" "false")]
     [(strV s) s]
-    [(closV arg body env) (format "{lamb : ~a : ~a}" arg body)]
-    [(primV p) (symbol->string p)]))
-
-
+    [(closV arg body _) "#<procedure>"]
+    [(primV p) "#<primop>"]))
 
 ; interp NOT COMPLETE (needs more test cases)
 (: interp (ExprC Env -> Value))
@@ -112,9 +110,10 @@
     [(numC n) (numV n)]  
     [(idC x) (lookup x env)]
     [(strC s) (strV s)]
-    [(ifC test then else) (if (eq? (interp test env) (boolV #t))
-                            (interp then env)
-                            (interp else env))]
+    [(ifC test then els) (match (interp test env)
+                            [(boolV #t) (interp then env)]
+                            [(boolV #f) (interp els env)]
+                            [else (error 'interp "ZODE: Invalid if expression: ~e" e)])]
     [(locals clauses body) (interp body (extend-env clauses env))]
     [(lamC arg body) (closV arg body env)]
     [(appC f args) (match (interp f env)
@@ -134,16 +133,22 @@
     ['+ (2num-op (interp (first exprs) env) (interp (second exprs) env) +)]
     ['- (2num-op (interp (first exprs) env) (interp (second exprs) env) -)]
     ['* (2num-op (interp (first exprs) env) (interp (second exprs) env) *)]
-    ['/ (2num-op (interp (first exprs) env) (interp (second exprs) env) /)]))
+    ['/ (2num-op (interp (first exprs) env) (interp (second exprs) env) /)]
+    ; ['<= (2num-op (interp (first exprs) env) (interp (second exprs) env) <=)]
+    ; ['equal? (2num-op (interp (first exprs) env) (interp (second exprs) env) equal?)]
+    ['true (boolV #t)]
+    ['false (boolV #f)]
+    ; ['error (error 'error "ZODE: error")]
+    [else (error 'interp-primitive "ZODE: Invalid primitive ~e" p)]))
 
 ; 2num-op
-(: 2num-op (Value Value (Number Number -> Number) -> Value))
+(: 2num-op (Value Value (Real Real -> Real) -> Value))
 ;   PARAMS:   l:    Value           the left operand
 ;             r:    Value           the right operand
 ;             operator: (Number Number -> Number) the operator to apply
 ;   RETURNS:  Value
 ;   PURPOSE:  helper for interp-primitive to apply a binary operator to two numbers
-(define (2num-op [l : Value] [r : Value] [operator : (Number Number -> Number)]) : Value
+(define (2num-op [l : Value] [r : Value] [operator : (Real Real -> Real)]) : Value
   (cond
     [(and (numV? l) (numV? r))
      (numV (operator (numV-n l) (numV-n r)))]
@@ -186,8 +191,8 @@
 ;   test environments with strings
 (define testenv5 (list (list 'x (strV "hello"))))
 ;   test environments with booleans
-(define testenv6 (list (list 'x (boolV #t))))
-(define testenv7 (list (list 'x (boolV #f))))
+(define testenv6 (list (list 'tv (boolV #t))))
+(define testenv7 (list (list 'fv (boolV #f))))
 
 ; ----- INTERPRETER TEST CASES ----- ;
 
@@ -206,11 +211,11 @@
 ;   test lookup with strings
 (check-equal? (lookup 'x testenv5) (strV "hello"))
 ;   test lookup with booleans
-(check-equal? (lookup 'x testenv6) (boolV #t))
-(check-equal? (lookup 'x testenv7) (boolV #f))
+(check-equal? (lookup 'tv testenv6) (boolV #t))
+(check-equal? (lookup 'fv testenv7) (boolV #f))
 ;   test lookup with a variable not found
 (check-exn #px"ZODE: Variable not found" (λ () (lookup 'y (list (list 'x (numV 5))))))
-
+;   
 ; ----- extend-env test cases -----
 ; test extending from top level environment
 (check-equal? (extend-env (clause 'x (numC 5)) top-env) 
@@ -218,7 +223,13 @@
                     (list '+ (primV '+)) 
                     (list '- (primV '-)) 
                     (list '* (primV '*)) 
-                    (list '/ (primV '/))))
+                    (list '/ (primV '/))
+                    ; (list '<= (primV '<=))
+                    ; (list 'equal? (primV 'equal?))
+                    (list 'true (boolV #t))
+                    (list 'false (boolV #f))
+                    ; (list 'error (primV 'error))
+                    ))
 ; test extending testenv1 with a number
 (check-equal? (extend-env (clause 'y (numC 6)) testenv1) 
               (list (list 'y (numV 6)) 
@@ -231,6 +242,11 @@
 (check-equal? (extend-env (clause 'y (strC "hello")) testenv1) 
               (list (list 'y (strV "hello")) 
                     (list 'x (numV 5))))
+; test extending testenv1 with a boolean expression
+(check-equal? (extend-env (clause 'y (ifC (idC 'tv) (numC 5) (numC 6))) testenv6) 
+              (list (list 'y (numV 5)) 
+                    (list 'tv (boolV #t))))
+
 
 ; ----- interp test cases -----
 ; test interp with numbers
@@ -238,29 +254,39 @@
 ; test interp with strings
 (check-equal? (interp (strC "hello") top-env) (strV "hello"))
 ; test interp with boolean expressions
-(check-equal? (interp (ifC (idC 'x) (numC 5) (numC 6)) testenv6) (numV 5))
-(check-equal? (interp (ifC (idC 'x) (numC 5) (numC 6)) testenv7) (numV 6))
+(check-equal? (interp (ifC (idC 'tv) (numC 5) (numC 6)) testenv6) (numV 5))
+(check-equal? (interp (ifC (idC 'fv) (numC 5) (numC 6)) testenv7) (numV 6))
 ; test interp with functions
 (check-equal? (interp (lamC 'x (idC 'x)) top-env) (closV 'x (idC 'x) top-env))
 ; test interp with primitive functions
 (check-equal? (interp (appC (idC '+) (list (numC 5) (numC 6))) top-env) (numV 11))
 (check-equal? (interp (appC (idC '-) (list (numC 5) (numC 6))) top-env) (numV -1))
 (check-equal? (interp (appC (idC '*) (list (numC 5) (numC 6))) top-env) (numV 30))
-(check-equal? (interp (appC (idC '/) (list (numC 6) (numC 5))) top-env) (numV 1.2))
+(check-equal? (interp (appC (idC '/) (list (numC 6) (numC 5))) top-env) (numV 6/5))
 ; error cases
 
 ; ----- interp-primitive test cases -----
-
+(check-equal? (interp-primitive '+ (list (numC 5) (numC 6)) top-env) (numV 11))
+(check-equal? (interp-primitive '- (list (numC 5) (numC 6)) top-env) (numV -1))
+(check-equal? (interp-primitive '* (list (numC 5) (numC 6)) top-env) (numV 30))
+(check-equal? (interp-primitive '/ (list (numC 6) (numC 5)) top-env) (numV 6/5))
+; (check-equal? (interp-primitive '<= (list (numC 5) (numC 6)) top-env) (boolV #t))
+; (check-equal? (interp-primitive 'equal? (list (numC 5) (numC 6)) top-env) (boolV #f))
+(check-equal? (interp-primitive 'true (list (numC 5) (numC 6)) top-env) (boolV #t))
+(check-equal? (interp-primitive 'false (list (numC 5) (numC 6)) top-env) (boolV #f))
+; (check-equal? (interp-primitive 'error (list (numC 5) (numC 6)) top-env) (error 'error "ZODE: error"))
 
 ; ----- 2num-op test cases -----
 
 
 ; ----- serialize test cases -----
 (check-equal? (serialize (numV 5)) "5")
-(check-equal? (serialize (boolV #t)) "#t")
+(check-equal? (serialize (boolV #t)) "true")
+(check-equal? (serialize (boolV #f)) "false")
 (check-equal? (serialize (strV "hello")) "hello")
-(check-equal? (serialize (closV 'x (idC 'x) top-env)) "{lamb : x : x}")
-(check-equal? (serialize (primV '+)) "+")
+(check-equal? (serialize (closV 'x (idC 'x) top-env)) "#<procedure>")
+(check-equal? (serialize (primV '+)) "#<primop>")
+
 
 ; ----- PARSER TEST CASES ----- ;
 
