@@ -84,10 +84,20 @@
 ;   RETURNS: String
 ;   PURPOSE:  
 (define (top-interp s)
-  "hi")
- ; (serialize (interp (parse s) top-env)))
+ (serialize (interp (parse s) top-env)))
 
-(check-equal? (top-interp 'hi) "hi")
+; serialize
+(: serialize (Value -> String))
+;   PARAMS:   v:    Value           the value to serialize
+;   RETURNS:  String
+;   PURPOSE:  convert a value to a string
+(define (serialize v)
+  (match v
+    [(numV n) (number->string n)]
+    [(boolV b) (if b "#t" "#f")]
+    [(strV s) s]
+    [(closV arg body env) (format "{lamb : ~a : ~a}" arg body)]
+    [(primV p) (symbol->string p)]))
 
 
 
@@ -140,18 +150,7 @@
     [else
      (error 'num+ "ZODE: primitive + expects numbers as arguments, given ~e and ~e" l r)]))
 
-; serialize
-(: serialize (Value -> String))
-;   PARAMS:   v:    Value           the value to serialize
-;   RETURNS:  String
-;   PURPOSE:  convert a value to a string
-(define (serialize v)
-  (match v
-    [(numV n) (number->string n)]
-    [(boolV b) (if b "#t" "#f")]
-    [(strV s) s]
-    [(closV arg body env) (format "{lamb : ~a : ~a}" arg body)]
-    [(primV p) (symbol->string p)]))
+
 
 ; ---------------------------- ;
 ; ----- PARSER FUNCTIONS ----- ;
