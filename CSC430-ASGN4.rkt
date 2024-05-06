@@ -140,6 +140,18 @@
     [else
      (error 'num+ "ZODE: primitive + expects numbers as arguments, given ~e and ~e" l r)]))
 
+; serialize
+(: serialize (Value -> String))
+;   PARAMS:   v:    Value           the value to serialize
+;   RETURNS:  String
+;   PURPOSE:  convert a value to a string
+(define (serialize v)
+  (match v
+    [(numV n) (number->string n)]
+    [(boolV b) (if b "#t" "#f")]
+    [(strV s) s]
+    [(closV arg body env) (format "{lamb : ~a : ~a}" arg body)]
+    [(primV p) (symbol->string p)]))
 
 ; ---------------------------- ;
 ; ----- PARSER FUNCTIONS ----- ;
@@ -236,7 +248,20 @@
 (check-equal? (interp (appC (idC '-) (list (numC 5) (numC 6))) top-env) (numV -1))
 (check-equal? (interp (appC (idC '*) (list (numC 5) (numC 6))) top-env) (numV 30))
 (check-equal? (interp (appC (idC '/) (list (numC 6) (numC 5))) top-env) (numV 1.2))
+; error cases
 
+; ----- interp-primitive test cases -----
+
+
+; ----- 2num-op test cases -----
+
+
+; ----- serialize test cases -----
+(check-equal? (serialize (numV 5)) "5")
+(check-equal? (serialize (boolV #t)) "#t")
+(check-equal? (serialize (strV "hello")) "hello")
+(check-equal? (serialize (closV 'x (idC 'x) top-env)) "{lamb : x : x}")
+(check-equal? (serialize (primV '+)) "+")
 
 ; ----- PARSER TEST CASES ----- ;
 
