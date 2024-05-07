@@ -3,7 +3,9 @@
 
 ;; Assignment 4
 
-;; DATA DEFINITIONS:
+; ----------------------------- ;
+; ----- DATA DEFINITIONS ------ ;
+; ----------------------------- ;
 
 ; textbook definition for a tstruct
 (define-syntax tstruct
@@ -23,18 +25,19 @@
 (tstruct lamC ([args : (Listof Symbol)] [body : ExprC]))
 (tstruct appC ([f : ExprC] [args : (Listof ExprC)]))
 
-; inside locals... ex. : add6 = {curradd 6} : 
-(tstruct Clause ([id : Symbol] [expr : ExprC] [rest : (Listof Clause)]))
+; Define the Clause: inside locals... ex. add6 = {curradd 6} : 
+(tstruct Clause ([id : Symbol] [expr : ExprC]))
 
-(define-type Value (U numV boolV strV closV primV)) ; Value type represents an evaluated expression
+; Define our value types -> represents an evaluated expression
+(define-type Value (U numV boolV strV closV primV)) 
 (tstruct boolV ([b : (U #t #f)]))                   ; boolV: boolean value
 (tstruct strV ([s : String]))                       ; strV: string value
-(tstruct closV ([arg : (Listof Symbol)] [body : ExprC] [env : Env])) ; closV: closure value
+(tstruct closV ([args : (Listof Symbol)] [body : ExprC] [env : Env])) ; closV: closure value
 (tstruct primV ([p : Symbol]))                      ; primV: primitive value
 (tstruct numV ([n : Real]))                         ; numV: number value
 
+; Define our env and top-env
 (define-type Env (Listof (List Symbol Value)))
-
 (define top-env (list (list '+ (primV '+))
                       (list '- (primV '-))
                       (list '* (primV '*))
@@ -63,208 +66,6 @@
     [(equal? x (first (first env))) (second (first env))]
     [else (lookup x (rest env))]))
 
-; extend-env NOT COMPLETE (waiting on more primitives to write more test cases)
-;  PARAMS:  clauses : Clauses
-;           env : Env
-;  RETURNS: Env
-;  PURPOSE: extend the environment env with the definitions in another environment.
-
-;(: extend-env (Clauses Env -> Env))
-;(define (extend-env [clses : Clauses] [env : Env])
- ; (match clses
-  ;  [(clause id expr) (cons (list id (interp expr env)) env)]
-   ; [(clauses id expr rest) (extend-env rest (cons (list id (interp expr env)) env))]))
-(: extend-env (Clause Env -> Env))
-(define (extend-env [clause : Clause] [env : Env])
-  (cons (list (Clause-id clause) (interp (Clause-expr clause) env)) env))
-
-
-
-
-; top-interp NOT COMPLETE (no test cases)
-(: top-interp (Sexp -> String)) 
-;   PARAMS:  s : Sexp
-;   RETURNS: String
-;   PURPOSE:  
-(define (top-interp s)
- (serialize (interp (parse s) top-env)))
-
-; serialize
-(: serialize (Value -> String))
-;   PARAMS:   v:    Value           the value to serialize
-;   RETURNS:  String
-;   PURPOSE:  convert a value to a string
-(define (serialize v)
-  (match v
-    [(numV n) (~v n)]
-    [(boolV b) (if b "true" "false")]
-    [(strV s) s]
-    [(closV arg body _) "#<procedure>"]
-    [(primV p) "#<primop>"]))
-
-; interp NOT COMPLETE (needs more test cases)
-; interp
-(: interp (ExprC Env -> Value))
-;   PARAMS:   e:    ExprC           the expression to interpret
-;             env:  Envrionment     list of functions defined in the current environment
-;   RETURNS:  Value
-;   PURPOSE:  
-(define (interp e env)
-  (match e                                                                     
-    [(numC n) (numV n)]  
-    [(idC x) (lookup x env)]
-    [(strC s) (strV s)]
-    [(ifC test then els) (match (interp test env)
-                            [(boolV #t) (interp then env)]
-                            [(boolV #f) (interp els env)]
-                            [else (error 'interp "ZODE: Invalid if expression: ~e" e)])]
-    [(locals clauses body) (interp body (extend-env clauses env))]
-    [(lamC arg body) (closV arg body)]
-    [(appC f args) (define f-val (interp f env))
-                   (define arg-vals (map (lambda ([arg : ExprC]) (interp arg env)) args))
-                   (match f-val
-                     [(closV params body env2)
-                      (define env2 (extend-env params env))
-                      (interp body env2)]
-                     [(primV p) (interp-primitive p args env)])]
-    ;[(appC f args) (match (interp f env)
-     ;                [(closV arg body env2) (interp body (cons (list arg (interp (first args) env)) env2))]
-      ;               [(primV p) (interp-primitive p args env)]
-        ;             [else (error 'interp "ZODE: Invalid application: ~e" e)])]
-    [else (error 'interp "ZODE: Invalid expression")]))
-
-; interp-primitive
-(: interp-primitive (Symbol (Listof ExprC) Env -> Value))
-;   PARAMS:   p:    Symbol          the primitive to interpret
-;             args: (Listof Value)  the arguments to the primitive
-;   RETURNS:  Value
-;   PURPOSE:  helper for interp to interpret primitives
-(define (interp-primitive [p : Symbol][exprs : (Listof ExprC)] [env : Env])
-  (match p 
-    ['+ (2num-op (interp (first exprs) env) (interp (second exprs) env) +)]
-    ['- (2num-op (interp (first exprs) env) (interp (second exprs) env) -)]
-    ['* (2num-op (interp (first exprs) env) (interp (second exprs) env) *)]
-    ['/ (2num-op (interp (first exprs) env) (interp (second exprs) env) /)]
-    ; ['<= (2num-op (interp (first exprs) env) (interp (second exprs) env) <=)]
-    ; ['equal? (2num-op (interp (first exprs) env) (interp (second exprs) env) equal?)]
-    ['true (boolV #t)]
-    ['false (boolV #f)]
-    ; ['error (error 'error "ZODE: error")]
-    [else (error 'interp-primitive "ZODE: Invalid primitive ~e" p)]))
-
-; 2num-op
-(: 2num-op (Value Value (Real Real -> Real) -> Value))
-;   PARAMS:   l:    Value           the left operand
-;             r:    Value           the right operand
-;             operator: (Number Number -> Number) the operator to apply
-;   RETURNS:  Value
-;   PURPOSE:  helper for interp-primitive to apply a binary operator to two numbers
-(define (2num-op [l : Value] [r : Value] [operator : (Real Real -> Real)]) : Value
-  (cond
-    [(and (numV? l) (numV? r))
-     (numV (operator (numV-n l) (numV-n r)))]
-    [else
-     (error 'num+ "ZODE: primitive + expects numbers as arguments, given ~e and ~e" l r)]))
-
-
-
-; ---------------------------- ;
-; ----- PARSER FUNCTIONS ----- ;
-; ---------------------------- ;
-; (define-type ExprC (U numC idC strC ifC locals lamb appC))         
-; parse  
-(: parse (Sexp -> ExprC))
-;   PARAMS:   s :  Sexp
-;   RETURNS:  ExprC
-;   PURPOSE:  
-(define (parse s)
-  (match s
-    [(? real? n) (numC n)]                            
-    [(? symbol? s) (idC s)] ; variable reference cant be named operator 
-    [(? string? str) (strC str)]
-    
-    
-    [else (error 'parse "ZODE: Invalid expression")]))  
-
-
-; ----- PARSER TEST CASES ----- ;
-
-; parse test cases desugars locals into lambs?
-(check-equal? (parse 3) (numC 3))
-(check-equal? (parse 'x) (idC 'x))
-(check-equal? (parse "30") (strC "30"))
-
-
-; (check-equal? (parse '{locals : x = 2 : y = 6 : {+ x y}})
-;               (appC (lamC (clauses (idC 'x) (idC 'y))
-;                           (appC (idC '+) (list (idC 'x) (idC 'y))))
-;                     (list (numC 2) (numC 6))))
-;               ;{{lamb : x y : {+ x y}} 2 6})
-
-; (check-equal? (parse '{locals : z = {+ 9 14} : y = 98 : {+ z y}})#lang typed/racket
-(require typed/rackunit)
-
-;; Assignment 4
-
-;; DATA DEFINITIONS:
-
-; textbook definition for a tstruct
-(define-syntax tstruct
-  (syntax-rules ()
-    [(_ name fields)
-     (struct name fields #:transparent)]))
-(tstruct fdC ([name : Symbol] [args : (Listof Symbol)] [body : ExprC]))
-
-
-; Define the ExprC for the ZODE4 language
-(define-type ExprC (U numC idC strC ifC locals lamC appC))                 
-(tstruct numC ([n : Real]))                           
-(tstruct idC ([name : Symbol]))                          
-(tstruct strC ([str : String]))
-(tstruct ifC ([test : ExprC] [then : ExprC] [else : ExprC]))
-(tstruct locals ([bindings : (Listof Clause)] [body : ExprC]))
-(tstruct lamC ([args : (Listof Symbol)] [body : ExprC]))
-(tstruct appC ([f : ExprC] [args : (Listof ExprC)]))
-
-; inside locals... ex. : add6 = {curradd 6} : 
-(tstruct Clause ([id : Symbol] [expr : ExprC] [rest : (Listof Clause)]))
-
-(define-type Value (U numV boolV strV closV primV)) ; Value type represents an evaluated expression
-(tstruct boolV ([b : (U #t #f)]))                   ; boolV: boolean value
-(tstruct strV ([s : String]))                       ; strV: string value
-(tstruct closV ([arg : (Listof Symbol)] [body : ExprC] [env : Env])) ; closV: closure value
-(tstruct primV ([p : Symbol]))                      ; primV: primitive value
-(tstruct numV ([n : Real]))                         ; numV: number value
-
-(define-type Env (Listof (List Symbol Value)))
-
-(define top-env (list (list '+ (primV '+))
-                      (list '- (primV '-))
-                      (list '* (primV '*))
-                      (list '/ (primV '/))
-                      ; (list '<= (primV '<=))
-                      ; (list 'equal? (primV 'equal?))
-                      (list 'true (boolV #t))
-                      (list 'false (boolV #f))
-                      ; (list 'error (primV 'error))
-                      ))
-
-
-; ----------------------------- ;
-; ----- INTERP FUNCTIONS ------ ;
-; ----------------------------- ;
-
-; lookup NOT COMPLETE (waiting on more primitives to write more test cases)
-;  PARAMS:  x : Symbol
-;           env : Env
-;  RETURNS: Value
-;  PURPOSE: lookup the value of x in the environment env
-(: lookup (Symbol Env -> Value))
-(define (lookup [x : Symbol] [env : Env])
-  (cond
-    [(empty? env) (error 'lookup "ZODE: Variable not found ~e" x)]
-    [(equal? x (first (first env))) (second (first env))]
-    [else (lookup x (rest env))]))
 
 ; extend-env NOT COMPLETE (waiting on more primitives to write more test cases)
 ;  PARAMS:  clauses : Clauses
@@ -324,17 +125,10 @@
                             [else (error 'interp "ZODE: Invalid if expression: ~e" e)])]
     [(locals clauses body) (interp body (extend-env clauses env))]
     [(lamC args body) (closV args body env)]
-    [(appC f args) (define f-val (interp f env))
-                   (define arg-vals (map (lambda ([arg : ExprC]) (interp arg env)) args))
-                   (match f-val
-                     [(closV params body env2)
-                      (define env2 (extend-env params env))
-                      (interp body env2)]
-                     [(primV p) (interp-primitive p args env)])]
-    ;[(appC f args) (match (interp f env)
-     ;                [(closV arg body env2) (interp body (cons (list arg (interp (first args) env)) env2))]
-      ;               [(primV p) (interp-primitive p args env)]
-        ;             [else (error 'interp "ZODE: Invalid application: ~e" e)])]
+    [(appC f args) (match (interp f env)
+                     [(closV arg body env2) (interp body (cons (list arg (interp (first args) env)) env2))]
+                     [(primV p) (interp-primitive p args env)]
+                     [else (error 'interp "ZODE: Invalid application: ~e" e)])]
     [else (error 'interp "ZODE: Invalid expression ~e" e)]))
 
 
@@ -387,24 +181,29 @@
     [(? real? n) (numC n)] ; real                           
     [(? symbol? s) (idC s)] ; variable
     [(? string? str) (strC str)] ; string
-    [(list 'if test then else) (ifC (parse test) (parse then) (parse else))] ; if 
-    [(list (? symbol? sym) '= expr rest) (parse-clause (list sym '= expr rest))] ; clause
+    [(list 'if test then else) (ifC (parse test) (parse then) (parse else))] ; if
+    [(list 'locals ': clauses ... ': body) ; locals
+     (locals (parse-clause (cast clauses Sexp)) (parse body))] ; cast clauses to an sexp and pass into parse-clause
+    ; separate parse-clause output into a list of symbols and a list of exprC
     [(list 'lambda args ... body) ; lambC
      (lamC (map (lambda ([arg : Sexp]) (parse arg)) args) (parse body))]
-    [(list (? symbol? f) args ...) ; appC
+    [(list f args ...) ; appC 
      (appC (parse f) (map (lambda ([arg : Sexp]) (parse arg)) args))]
-    [else (error 'parse "ZODE: Invalid expression")])) 
+    [else (error 'parse "ZODE: Invalid expression")]))
 
-
-(: parse-clause (Sexp -> Clause))
+; parse-clause
+(: parse-clause (Sexp -> (Listof Clause)))
+;   PARAMS:   s :  Sexp
+;   RETURNS:  list of Clause
+;   PURPOSE:  parse clauses from locals statement 
 (define (parse-clause s)
-  (cond
-    [(empty? s) '()]
-    [else
-     (match s
-       [(list (? symbol? id) '= expr rest ...)
-        (Clause id (parse expr) (list (parse-clause rest)))]
-       [else (error 'parse-clause "ZODE: Invalid clause expression")])]))
+  (match s
+    [(list (? symbol? id) '= expr)
+     (list (Clause id (parse expr)))]
+    [(list (? symbol? id) '= expr rest *)
+     (cons (Clause id (parse expr)) (parse-clause (list rest *)))]
+    [else (error 'parse-clause "ZODE: Invalid clause expression")]))
+
 
 
 ; ---------------------- ;
@@ -413,8 +212,8 @@
 
 ; ----- defs for test cases ----- ;
 ; test parsed functions
-(define testpfunc0 (Clause 'curradd (lamC (list 'x) (appC (idC '+) (list (idC 'x) (idC 'x)))) '()))
-(define testpfunc1 (Clause 'add6 (appC (idC 'curradd) (list (numC 6))) '()))
+(define testpfunc0 (Clause 'curradd (lamC (list 'x) (appC (idC '+) (list (idC 'x) (idC 'x))))))
+(define testpfunc1 (Clause 'add6 (appC (idC 'curradd) (list (numC 6)))))
 
 ;   test environments with numbers
 (define testenv1 (list (list 'x (numV 5))))
@@ -452,7 +251,7 @@
 ;   
 ; ----- extend-env test cases -----
 ; test extending from top level environment
-(check-equal? (extend-env (Clause 'x (numC 5) '()) top-env) 
+(check-equal? (extend-env (Clause 'x (numC 5)) top-env) 
               (list (list 'x (numV 5)) 
                     (list '+ (primV '+)) 
                     (list '- (primV '-)) 
@@ -465,7 +264,7 @@
                     ; (list 'error (primV 'error))
                     ))
 ; test extending testenv1 with a number
-(check-equal? (extend-env (Clause 'y (numC 6) '()) testenv1) 
+(check-equal? (extend-env (Clause 'y (numC 6)) testenv1) 
               (list (list 'y (numV 6)) 
                     (list 'x (numV 5))))
 ; test extending testenv1 with a function
@@ -473,11 +272,11 @@
               (list (list 'curradd (closV 'x (appC (idC '+) (list (idC 'x) (idC 'x))) testenv1))
                     (list 'x (numV 5))))
 ; test extending testenv1 with a string
-(check-equal? (extend-env (Clause 'y (strC "hello") '()) testenv1) 
+(check-equal? (extend-env (Clause 'y (strC "hello")) testenv1) 
               (list (list 'y (strV "hello")) 
                     (list 'x (numV 5))))
 ; test extending testenv1 with a boolean expression
-(check-equal? (extend-env (Clause 'y (ifC (idC 'tv) (numC 5) (numC 6)) '()) testenv6) 
+(check-equal? (extend-env (Clause 'y (ifC (idC 'tv) (numC 5) (numC 6))) testenv6) 
               (list (list 'y (numV 5)) 
                     (list 'tv (boolV #t))))
 
@@ -532,23 +331,6 @@
 
 
 ; (check-equal? (parse '{locals : z = {+ 9 14} : y = 98 : {+ z y}})
- ;              (appC (lamC (clauses (idC 'z) (idC 'y))
-  ;                         (appC (idC '+) (list (idC 'z) (idC 'y))))
-   ;                  (list (appC (idC '+) (list (numC 9) (numC 14))) (numC 98))))
-; lamC list z y
-;               ; {{lamb : z y : {+ z y}} {+ 9 14} 98})
-
-
-
-;(check-equal? (parse '{locals : x = 2 : y = 6 : {+ x y}})
- ;             (appC (lamC (clauses (idC 'x) (idC 'y))
-  ;                        (appC (idC '+) (list (idC 'x) (idC 'y))))
-   ;                 (list (numC 2) (numC 6))))
-;{{lamb : x y : {+ x y}} 2 6}
-
-
-
-
  ;              (appC (lamC (clauses (idC 'z) (idC 'y))
   ;                         (appC (idC '+) (list (idC 'z) (idC 'y))))
    ;                  (list (appC (idC '+) (list (numC 9) (numC 14))) (numC 98))))
