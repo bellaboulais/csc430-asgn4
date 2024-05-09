@@ -66,7 +66,7 @@
   (cond
     [(empty? env) (error 'lookup "ZODE: Variable not found ~e" x)]
     [(equal? x (first (first env))) (second (first env))]
-    [else (lookup x (rest env))]))
+    [else (lookup x (rest env))])) 
 
 ; extend-env
 ;  PARAMS:  clauses : Clauses
@@ -136,17 +136,20 @@
 ;   RETURNS:  Value
 ;   PURPOSE:  helper for interp to interpret primitives
 (define (interp-primitive [p : Symbol][exprs : (Listof ExprC)] [env : Env])
+  (define e1 (interp (first exprs) env))
+  (define e2 (interp (second exprs) env))
   (match p 
-    ['+ (2num-op (interp (first exprs) env) (interp (second exprs) env) +)]
-    ['- (2num-op (interp (first exprs) env) (interp (second exprs) env) -)]
-    ['* (2num-op (interp (first exprs) env) (interp (second exprs) env) *)]
-    ['/ (2num-op (interp (first exprs) env) (interp (second exprs) env) /)]
+    ['+ (2num-op e1 e2 +)]
+    ['- (2num-op e1 e2 -)]
+    ['* (2num-op e1 e2 *)]
+    ['/ (2num-op e1 e2 /)]
     ; ['<= (2num-op (interp (first exprs) env) (interp (second exprs) env) <=)]
     ; ['equal? (2num-op (interp (first exprs) env) (interp (second exprs) env) equal?)]
     ['true (boolV #t)]
     ['false (boolV #f)]
     ; ['error (error 'error "ZODE: error")]
-    [else (error 'interp-primitive "ZODE: Invalid primitive ~e" p)]))
+    [else (error 'interp-primitive "ZODE: Invalid primitive ~e" p)])
+  )
 
 ; 2num-op
 (: 2num-op (Value Value (Real Real -> Real) -> Value))
@@ -164,7 +167,7 @@
 
 
 
-; ---------------------------- ;
+; ---------------------------- ; 
 ; ----- PARSER FUNCTIONS ----- ;
 ; ---------------------------- ;
 
@@ -178,14 +181,31 @@
     [(? real? n) (numC n)] ; real                           
     [(? symbol? s) (idC s)] ; variable
     [(? string? str) (strC str)] ; string
-    [(list 'if test then else) (ifC (parse test) (parse then) (parse else))] ; if
+    [(list 'if ': test ': then ': else) (ifC (parse test) (parse then) (parse else))] ; if
     ;[(list 'locals ': clauses ... ': body) ; locals
     ; (locals (parse-clause (cast clauses Sexp)) (parse body))] ; cast clauses to an sexp and pass into parse-clause
     ; separate parse-clause output into a list of symbols and a list of exprC
     [(list 'lamb ': args ... ': body) ; lambC
      (lamC (cast args (Listof Symbol)) (parse body))]
-    [(list f args ...) ; appC
-     (appC (parse f) (map (lambda ([arg : Sexp]) (parse arg)) args))]))
+    [(list f args ...) ; appC 
+     (define parsed-args (map (lambda ([arg : Sexp]) (parse arg)) args))
+     (match f
+       [(or '+ '- '* '/) ; Check if f is a mathematical operation
+        (cond
+          [(check-if parsed-args)
+           (appC (parse f) parsed-args)]
+          [else (error 'parse "ZODE: Invalid arguments for operation ~a" f)])]
+       [else (appC (parse f) parsed-args)])]))
+
+(: check-if ((Listof ExprC) -> Boolean))
+; helper function to check for key word if
+(define (check-if lst)
+  (cond
+    [(empty? lst) #t]
+    [(equal? (first lst) (idC 'if))
+     #f]
+    [else (check-if (rest lst))]))
+
 
 
 ; parse-clause
@@ -205,6 +225,8 @@
 ;             (appC (lamC '(z y) (appC (idC '+) (list (idC 'z) (idC 'y))))
 ;                  (list (appC (idC '+) (list (numC 9) (numC 14))) (numC 98))))
            
+ 
+(top-interp (quote (if : true : + : -)))
 
 ; ---------------------- ;
 ; ----- TEST CASES ----- ;
@@ -236,7 +258,7 @@
 ;   test lookup with the primitive functions
 (check-equal? (lookup '+ top-env) (primV '+))
 (check-equal? (lookup '- top-env) (primV '-))
-(check-equal? (lookup '* top-env) (primV '*))
+(check-equal? (lookup '* top-env) (primV '*)) 
 (check-equal? (lookup '/ top-env) (primV '/))
 ;   test lookup with functions
 (check-equal? (lookup 'x testenv3) (closV (list 'x) (idC 'x) testenv1))
@@ -322,29 +344,36 @@
 
 ; ----- PARSER TEST CASES ----- ;
 
-; parse test cases desugars locals into lambs?
+; parse test cases desugars locals into lambs? 
 (check-equal? (parse 3) (numC 3))
 (check-equal? (parse 'x) (idC 'x))
 (check-equal? (parse "30") (strC "30"))
-(check-equal? (parse '{if true 5 6})
+(check-equal? (parse '{if : true : 5 : 6})
               (ifC (idC 'true) (numC 5) (numC 6)))
-(check-equal? (parse '{if false 5 6})
+(check-equal? (parse '{f 5 6})
+              (appC (idC 'f) (list (numC 5) (numC 6))))
+(check-equal? (parse '{if : false : 5 : 6}) 
               (ifC (idC 'false) (numC 5) (numC 6)))
 (check-equal? (parse '{lamb : x : {+ x x}})
               (lamC (list 'x) (appC (idC '+) (list (idC 'x) (idC 'x)))))
+(check-exn (regexp (regexp-quote "parse: ZODE: Invalid arguments for operation +"))
+           (lambda () (parse '(+ if 4)))) 
+ 
 
-; shouldn't pass this test case
-; '(parse '(+ if 4))
-
-
+ 
 ; test cases for top-interp               
 (check-equal? (top-interp '{+ 5 6}) "11")
+
 
 ;(check-equal? (parse '{locals : x = 2 : y = 6 : {+ x y}})
 ;             (appC (lamC (clauses (idC 'x) (idC 'y))
 ;                        (appC (idC '+) (list (idC 'x) (idC 'y))))
 ;                 (list (numC 2) (numC 6))))
 ;{{lamb : x y : {+ x y}} 2 6}
- 
+
+
+;while evaluating (top-interp (quote (if : true : + : -))):
+;  lookup: ZODE: Variable not found ''if
+;Saving submission with errors.
 
 
