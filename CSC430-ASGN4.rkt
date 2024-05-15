@@ -44,11 +44,11 @@
                       (list '- (primV '-))
                       (list '* (primV '*))
                       (list '/ (primV '/))
-                      ; (list '<= (primV '<=))
-                      ; (list 'equal? (primV 'equal?))
+                      (list '<= (primV '<=))
+                      (list 'equal? (primV 'equal?))
                       (list 'true (boolV #t))
                       (list 'false (boolV #f))
-                      ; (list 'error (primV 'error))
+                      (list 'error (primV 'error))
                       ))
 
 
@@ -82,13 +82,19 @@
   (cast (append new-bindings env) Env))
   
 
-; top-interp NOT COMPLETE (no test cases)
+; top-interp
 (: top-interp (Sexp -> String)) 
 ;   PARAMS:  s : Sexp 
 ;   RETURNS: String
 ;   PURPOSE:  
 (define (top-interp s)
-  (serialize (interp (parse s) top-env)))
+  (define parsed-s (parse s))
+  (display "parse: ")
+  (displayln parsed-s)
+  (define interp-s (interp parsed-s top-env))
+  (display "interp: ")
+  (displayln interp-s)
+  (serialize interp-s))
 
 
 ; serialize
@@ -114,17 +120,21 @@
 (define (interp e env)
   (match e                                                                     
     [(numC n) (numV n)]  
-    [(idC x) (lookup x env)]
-    [(strC s) (strV s)]
+    [(idC x) (lookup x env)] 
+    [(strC s) (strV s)] 
     [(ifC test then els) (match (interp test env)
                            [(boolV #t) (interp then env)]
                            [(boolV #f) (interp els env)]
                            [else (error 'interp "ZODE: Invalid if expression: ~e" e)])]
-    [(lamC args body) (closV args body env)]
+    [(lamC args body)
+     (closV args body env)]
     [(appC f args) (match (interp f env)
                      [(closV params body env2)
                       (define argval (map (lambda ([arg : ExprC]) (interp arg env)) args))
-                      (interp body (extend-env params argval env))]
+                      (cond
+                        [(= (length params) (length args))
+                         (interp body (extend-env params argval env))]
+                        [else (error 'interp "ZODE: Invalid number of arguments: ~e" e)])]
                      [(primV p) (interp-primitive p args env)]
                      [else (error 'interp "ZODE: Invalid application: ~e" e)])]))
 
@@ -143,8 +153,8 @@
     ['- (2num-op e1 e2 -)]
     ['* (2num-op e1 e2 *)]
     ['/ (2num-op e1 e2 /)]
-    ; ['<= (2num-op (interp (first exprs) env) (interp (second exprs) env) <=)]
-    ; ['equal? (2num-op (interp (first exprs) env) (interp (second exprs) env) equal?)]
+    ;['<= (2num-op (interp (first exprs) env) (interp (second exprs) env) <=)]
+    ;['equal? (2num-op (interp (first exprs) env) (interp (second exprs) env) equal?)]
     ['true (boolV #t)]
     ['false (boolV #f)]
     ; ['error (error 'error "ZODE: error")]
@@ -186,7 +196,11 @@
     ; (locals (parse-clause (cast clauses Sexp)) (parse body))] ; cast clauses to an sexp and pass into parse-clause
     ; separate parse-clause output into a list of symbols and a list of exprC
     [(list 'lamb ': args ... ': body) ; lambC
-     (lamC (cast args (Listof Symbol)) (parse body))]
+     (if (andmap symbol? args)
+         (if (equal? args (remove-duplicates args))
+             (lamC (cast args (Listof Symbol)) (parse body))
+             (error 'parse "ZODE: Duplicate arguments in lambda expression: ~a" args))
+         (error 'parse "ZODE: Invalid arguments for lambda expression: ~a" args))]
     [(list f args ...) ; appC 
      (define parsed-args (map (lambda ([arg : Sexp]) (parse arg)) args))
      (match f
@@ -225,8 +239,7 @@
 ;             (appC (lamC '(z y) (appC (idC '+) (list (idC 'z) (idC 'y))))
 ;                  (list (appC (idC '+) (list (numC 9) (numC 14))) (numC 98))))
            
- 
-(top-interp (quote (if : true : + : -)))
+
 
 ; ---------------------- ;
 ; ----- TEST CASES ----- ;
@@ -357,12 +370,24 @@
 (check-equal? (parse '{lamb : x : {+ x x}})
               (lamC (list 'x) (appC (idC '+) (list (idC 'x) (idC 'x)))))
 (check-exn (regexp (regexp-quote "parse: ZODE: Invalid arguments for operation +"))
-           (lambda () (parse '(+ if 4)))) 
- 
+           (lambda () (parse '(+ if 4))))
+(check-exn (regexp (regexp-quote "parse: ZODE: Duplicate arguments in lambda expression: (x x)"))
+           (lambda () (parse '(lamb : x x : 3))))
+(check-exn (regexp (regexp-quote "parse: ZODE: Invalid arguments for lambda expression: (3 4 5)"))
+           (lambda () (parse '(lamb : 3 4 5 : 6))))
+
+
 
  
 ; test cases for top-interp               
 (check-equal? (top-interp '{+ 5 6}) "11")
+(check-equal? (top-interp '{{lamb : x : {+ x x}} 2}) "4")
+(check-equal? (top-interp (quote (if : true : + : -))) "#<primop>")
+(check-exn
+ (regexp
+  (regexp-quote
+   "interp: ZODE: Invalid number of arguments: (appC (lamC '() (numC 9)) (list (numC 17)))"))
+ (lambda () (top-interp '((lamb : : 9) 17))))
 
 
 ;(check-equal? (parse '{locals : x = 2 : y = 6 : {+ x y}})
@@ -371,9 +396,11 @@
 ;                 (list (numC 2) (numC 6))))
 ;{{lamb : x y : {+ x y}} 2 6}
 
+(top-interp (quote ((lamb : seven : (seven))
+                    ((lamb : minus :(lamb : : (minus (+ 3 10) (* 2 3))))
+                     (lamb : x y : (+ x (* -1 y)))))))
 
-;while evaluating (top-interp (quote (if : true : + : -))):
-;  lookup: ZODE: Variable not found ''if
+;while evaluating (top-interp (quote ((lamb : seven : (seven))
+; ((lamb : minus : (lamb : : (minus (+ 3 10) (* 2 3)))) (lamb : x y : (+ x (* -1 y))))))):
+;  lookup: ZODE: Variable not found ''minus
 ;Saving submission with errors.
-
-
