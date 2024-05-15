@@ -25,7 +25,7 @@
 (tstruct ifC ([test : ExprC] [then : ExprC] [else : ExprC]))
 (tstruct locals ([bindings : (Listof Clause)] [body : ExprC]))
 (tstruct lamC ([args : (Listof Symbol)] [body : ExprC]))
-(tstruct appC ([f : ExprC] [args : (Listof ExprC)]))
+(tstruct appC ([f : ExprC] [args : (Listof ExprC)])) 
 
 ; Define the Clause: inside locals... ex. add6 = {curradd 6} : 
 (tstruct Clause ([id : Symbol] [expr : ExprC]))
@@ -79,8 +79,8 @@
     (map (lambda (param [arg : Value])
            (list param arg))
          params argval))
-  (cast (append new-bindings env) Env))
-  
+  (cast (append new-bindings env) Env)) 
+   
 
 ; top-interp
 (: top-interp (Sexp -> String)) 
@@ -89,11 +89,11 @@
 ;   PURPOSE:  
 (define (top-interp s)
   (define parsed-s (parse s))
-  (display "parse: ")
-  (displayln parsed-s)
+  ;(display "parse: ")
+  ;(displayln parsed-s)
   (define interp-s (interp parsed-s top-env))
-  (display "interp: ")
-  (displayln interp-s)
+  ;(display "interp: ")
+  ;(displayln interp-s)
   (serialize interp-s))
 
 
@@ -111,13 +111,16 @@
     [(primV p) "#<primop>"]))
 
 
-; interp NOT COMPLETE (needs more test cases)
+; interp
 (: interp (ExprC Env -> Value))
 ;   PARAMS:   e:    ExprC           the expression to interpret
 ;             env:  Envrionment     list of functions defined in the current environment
 ;   RETURNS:  Value
 ;   PURPOSE:  
 (define (interp e env)
+  ;(display "interp function: ")
+  ;(displayln e)
+  ;(displayln "")
   (match e                                                                     
     [(numC n) (numV n)]  
     [(idC x) (lookup x env)] 
@@ -133,7 +136,7 @@
                       (define argval (map (lambda ([arg : ExprC]) (interp arg env)) args))
                       (cond
                         [(= (length params) (length args))
-                         (interp body (extend-env params argval env))]
+                         (interp body (extend-env params argval env2))]
                         [else (error 'interp "ZODE: Invalid number of arguments: ~e" e)])]
                      [(primV p) (interp-primitive p args env)]
                      [else (error 'interp "ZODE: Invalid application: ~e" e)])]))
@@ -187,6 +190,8 @@
 ;   RETURNS:  ExprC
 ;   PURPOSE:  
 (define (parse s)
+  ;(display "parse function: ")
+  ;(displayln s)
   (match s
     [(? real? n) (numC n)] ; real                           
     [(? symbol? s) (idC s)] ; variable
@@ -238,7 +243,9 @@
 ;(check-equal? (parse '{locals : z = {+ 9 14} : y = 98 : {+ z y}})
 ;             (appC (lamC '(z y) (appC (idC '+) (list (idC 'z) (idC 'y))))
 ;                  (list (appC (idC '+) (list (numC 9) (numC 14))) (numC 98))))
-           
+
+
+
 
 
 ; ---------------------- ;
@@ -389,6 +396,10 @@
    "interp: ZODE: Invalid number of arguments: (appC (lamC '() (numC 9)) (list (numC 17)))"))
  (lambda () (top-interp '((lamb : : 9) 17))))
 
+(check-equal? (top-interp (quote ((lamb : seven : (seven)) 
+                    ((lamb : minus :(lamb : : (minus (+ 3 10) (* 2 3))))
+                     (lamb : x y : (+ x (* -1 y))))))) "7")
+
 
 ;(check-equal? (parse '{locals : x = 2 : y = 6 : {+ x y}})
 ;             (appC (lamC (clauses (idC 'x) (idC 'y))
@@ -396,11 +407,8 @@
 ;                 (list (numC 2) (numC 6))))
 ;{{lamb : x y : {+ x y}} 2 6}
 
-(top-interp (quote ((lamb : seven : (seven))
-                    ((lamb : minus :(lamb : : (minus (+ 3 10) (* 2 3))))
-                     (lamb : x y : (+ x (* -1 y)))))))
 
-;while evaluating (top-interp (quote ((lamb : seven : (seven))
-; ((lamb : minus : (lamb : : (minus (+ 3 10) (* 2 3)))) (lamb : x y : (+ x (* -1 y))))))):
-;  lookup: ZODE: Variable not found ''minus
+
+;while evaluating (top-interp (quote (if : (<= 4 3) : 29387 : true))):
+;  interp-primitive: ZODE: Invalid primitive ''<=
 ;Saving submission with errors.
