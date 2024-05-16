@@ -3,7 +3,6 @@
 
 ;; Assignment 4
 
-;; haven't gotten locals working
 
 ; ----------------------------- ;
 ; ----- DATA DEFINITIONS ------ ;
@@ -92,11 +91,11 @@
   ;(display "parse: ")
   ;(displayln parsed-s)
   (define interp-s (interp parsed-s top-env))
-  ;(display "interp: ")
-  ;(displayln interp-s)
+  (display "interp: ")
+  (displayln interp-s)
   (serialize interp-s))
 
-
+ 
 ; serialize
 (: serialize (Value -> String))
 ;   PARAMS:   v:    Value           the value to serialize
@@ -149,20 +148,27 @@
 ;   RETURNS:  Value
 ;   PURPOSE:  helper for interp to interpret primitives
 (define (interp-primitive [p : Symbol][exprs : (Listof ExprC)] [env : Env])
-  (define e1 (interp (first exprs) env))
-  (define e2 (interp (second exprs) env))
   (match p 
-    ['+ (2num-op e1 e2 +)]
-    ['- (2num-op e1 e2 -)]
-    ['* (2num-op e1 e2 *)]
-    ['/ (2num-op e1 e2 /)]
-    ;['<= (2num-op (interp (first exprs) env) (interp (second exprs) env) <=)]
-    ;['equal? (2num-op (interp (first exprs) env) (interp (second exprs) env) equal?)]
+    ['+ (2num-op (interp (first exprs) env) (interp (second exprs) env) +)]
+    ['- (2num-op (interp (first exprs) env) (interp (second exprs) env) -)]
+    ['* (2num-op (interp (first exprs) env) (interp (second exprs) env) *)]
+    ['/ (define e1 (interp (first exprs) env))
+        (define e2 (interp (second exprs) env))
+        (cond
+          [(equal? e2 (numV 0))
+           (error 'division "ZODE: Division by zero ~e" e2)]
+          [else (2num-op (interp (first exprs) env) (interp (second exprs) env) /)])]
+    ['<= (define e1 (interp (first exprs) env))
+         (define e2 (interp (second exprs) env))
+         (cond 
+           [(and (numV? e1) (numV? e2))
+            (boolV (<= (numV-n e1) (numV-n e2)))] 
+           [else (error 'interp-primitive "ZODE: Invalid arguments for <= ~e" exprs)])]
+    ['equal? (boolV (equal? (interp (first exprs) env) (interp (second exprs) env)))]
     ['true (boolV #t)]
-    ['false (boolV #f)]
-    ; ['error (error 'error "ZODE: error")]
-    [else (error 'interp-primitive "ZODE: Invalid primitive ~e" p)])
-  )
+    ['false (boolV #f)] 
+    ['error (error 'error "ZODE: error")]
+    [else (error 'interp-primitive "ZODE: Invalid primitive ~e" p)]))
 
 ; 2num-op
 (: 2num-op (Value Value (Real Real -> Real) -> Value))
@@ -174,7 +180,7 @@
 (define (2num-op [l : Value] [r : Value] [operator : (Real Real -> Real)]) : Value
   (cond
     [(and (numV? l) (numV? r))
-     (numV (operator (numV-n l) (numV-n r)))]
+     (numV (operator (numV-n l) (numV-n r)))] 
     [else
      (error 'num+ "ZODE: primitive + expects numbers as arguments, given ~e and ~e" l r)]))
 
@@ -186,20 +192,18 @@
 
 ; parse  
 (: parse (Sexp -> ExprC))
-;   PARAMS:   s :  Sexp
+;   PARAMS:   s :  Sexp 
 ;   RETURNS:  ExprC
 ;   PURPOSE:  
 (define (parse s)
-  ;(display "parse function: ")
-  ;(displayln s)
   (match s
     [(? real? n) (numC n)] ; real                           
     [(? symbol? s) (idC s)] ; variable
     [(? string? str) (strC str)] ; string
     [(list 'if ': test ': then ': else) (ifC (parse test) (parse then) (parse else))] ; if
-    ;[(list 'locals ': clauses ... ': body) ; locals
-    ; (locals (parse-clause (cast clauses Sexp)) (parse body))] ; cast clauses to an sexp and pass into parse-clause
-    ; separate parse-clause output into a list of symbols and a list of exprC
+    [(list 'locals ': clauses ... ': body) ; locals
+     (displayln "in locals")
+     (locals (parse-clause (cast clauses Sexp)) (parse body))]
     [(list 'lamb ': args ... ': body) ; lambC
      (if (andmap symbol? args)
          (if (equal? args (remove-duplicates args))
@@ -226,27 +230,27 @@
     [else (check-if (rest lst))]))
 
 
-
 ; parse-clause
-; (: parse-clause (Sexp -> (Listof Clause)))
+(: parse-clause (Sexp -> (Listof Clause)))
 ;   PARAMS:   s :  Sexp
 ;   RETURNS:  list of Clause
 ;   PURPOSE:  parse clauses from locals statement 
-#;(define (parse-clause s)
-    (match s
+(define (parse-clause s)
+  (match s
       [(list (? symbol? id) '= expr)
-       (list (Clause id (parse expr)))]
-      [(list (? symbol? id) '= expr ': rest *)
-       (cons (Clause id (parse expr)) (parse-clause (cons '(:) rest)))] 
+       (list (Clause id (parse expr)))] 
+      [(list (? symbol? id) '= expr ': rest ...)
+       (cons (Clause id (parse (cast expr (Listof Sexp)))) (parse-clause rest))] 
       [else (error 'parse-clause "ZODE: Invalid clause expression")]))
-
-;(check-equal? (parse '{locals : z = {+ 9 14} : y = 98 : {+ z y}})
-;             (appC (lamC '(z y) (appC (idC '+) (list (idC 'z) (idC 'y))))
-;                  (list (appC (idC '+) (list (numC 9) (numC 14))) (numC 98))))
-
-
+ 
+(check-equal? (parse '{locals : z = {+ 9 14} : y = 98 : {+ z y}})
+             (appC (lamC '(z y) (appC (idC '+) (list (idC 'z) (idC 'y))))
+                  (list (appC (idC '+) (list (numC 9) (numC 14))) (numC 98))))
 
 
+;(parse '{locals : z = {+ 9 14} : y = 98 : {+ z y}})
+;(top-interp '(locals (list (Clause 'z (appC (idC '+) (list (numC 9) (numC 14))))
+ ;                     (Clause 'y (numC 98))) (appC (idC '+) (list (idC 'z) (idC 'y)))))
 
 ; ---------------------- ;
 ; ----- TEST CASES ----- ;
@@ -284,7 +288,7 @@
 (check-equal? (lookup 'x testenv3) (closV (list 'x) (idC 'x) testenv1))
 (check-equal? (lookup 'x testenv4) (closV (list 'x) (idC 'x) top-env))
 ;   test lookup with strings
-(check-equal? (lookup 'x testenv5) (strV "hello"))
+(check-equal? (lookup 'x testenv5) (strV "hello")) 
 ;   test lookup with booleans
 (check-equal? (lookup 'tv testenv6) (boolV #t))
 (check-equal? (lookup 'fv testenv7) (boolV #f))
@@ -331,22 +335,27 @@
 
 
 ; test interp with invalid lambda FAILED NO EXCEPTION RAISED
-;(check-exn exn:fail? (λ () (interp (lamC '(x) (idC 'x)) top-env)))
+;(check-exn exn:fail? (λ () (interp (lamC '(x) (idC 'x)) top-env))) 
 
 ; ----- interp-primitive test cases -----
 (check-equal? (interp-primitive '+ (list (numC 5) (numC 6)) top-env) (numV 11))
 (check-equal? (interp-primitive '- (list (numC 5) (numC 6)) top-env) (numV -1))
 (check-equal? (interp-primitive '* (list (numC 5) (numC 6)) top-env) (numV 30))
 (check-equal? (interp-primitive '/ (list (numC 6) (numC 5)) top-env) (numV 6/5))
-; (check-equal? (interp-primitive '<= (list (numC 5) (numC 6)) top-env) (boolV #t))
-; (check-equal? (interp-primitive 'equal? (list (numC 5) (numC 6)) top-env) (boolV #f))
+(check-equal? (interp-primitive '<= (list (numC 5) (numC 6)) top-env) (boolV #t))
+(check-equal? (interp-primitive 'equal? (list (numC 5) (numC 6)) top-env) (boolV #f))
 (check-equal? (interp-primitive 'true (list (numC 5) (numC 6)) top-env) (boolV #t))
 (check-equal? (interp-primitive 'false (list (numC 5) (numC 6)) top-env) (boolV #f))
-; (check-equal? (interp-primitive 'error (list (numC 5) (numC 6)) top-env) (error 'error "ZODE: error"))
+(check-exn (regexp (regexp-quote "interp-primitive: ZODE: Invalid arguments for <= (list (strC \"2\") (numC 6))"))
+           (lambda () (interp-primitive '<= (list (strC "2") (numC 6)) top-env))) 
 (check-exn (regexp (regexp-quote "interp-primitive: ZODE: Invalid primitive 'invalid-primitive"))
            (lambda () (interp-primitive 'invalid-primitive (list (numC 5) (numC 6)) top-env)))
+(check-exn (regexp (regexp-quote "error: ZODE: error"))
+           (lambda () (interp-primitive 'error (list (numC 5) (numC 6)) top-env)))
+(check-exn (regexp (regexp-quote "division: ZODE: Division by zero"))
+           (lambda () (interp-primitive '/ (list (numC 5) (numC 0)) top-env)))
 
-
+ 
 ; ----- 2num-op test cases -----
 (check-exn
  (regexp
@@ -384,7 +393,7 @@
            (lambda () (parse '(lamb : 3 4 5 : 6))))
 
 
-
+ 
  
 ; test cases for top-interp               
 (check-equal? (top-interp '{+ 5 6}) "11")
@@ -409,6 +418,7 @@
 
 
 
-;while evaluating (top-interp (quote (if : (<= 4 3) : 29387 : true))):
-;  interp-primitive: ZODE: Invalid primitive ''<=
+
+;expected exception with message containing ZODE on test expression:
+;'(parse '(locals : z = (lamb : : 3) : z = 9 : (z)))
 ;Saving submission with errors.
