@@ -105,7 +105,7 @@
   (match v
     [(numV n) (~v n)]
     [(boolV b) (if b "true" "false")]
-    [(strV s) s]
+    [(strV s) (~v s)]
     [(closV arg body _) "#<procedure>"]
     [(primV p) "#<primop>"]))
 
@@ -249,12 +249,15 @@
 (define (parse-clause s)
   (match s
     [(list (? symbol? id) '= expr)
-     (list (Clause id (parse expr)))] 
+     (cond
+       [(equal? id ':)
+        (error 'parse-clause "ZODE: Invalid clause expression ~e" s)]
+       [else (list (Clause id (parse expr)))])]
     [(list (? symbol? id) '= expr ': rest ...)
      (cons (Clause id (parse expr)) (parse-clause rest))] 
     [else (error 'parse-clause "ZODE: Invalid clause expression ~e" s)]))
 
-
+ 
 ; ---------------------- ;
 ; ----- TEST CASES ----- ; 
 ; ---------------------- ;
@@ -362,7 +365,7 @@
 (check-equal? (serialize (numV 5)) "5")
 (check-equal? (serialize (boolV #t)) "true") 
 (check-equal? (serialize (boolV #f)) "false")
-(check-equal? (serialize (strV "hello")) "hello")
+(check-equal? (serialize (strV "hello")) "\"hello\"")
 (check-equal? (serialize (closV (list 'x) (idC 'x) top-env)) "#<procedure>")
 (check-equal? (serialize (primV '+)) "#<primop>")
 
@@ -391,8 +394,10 @@
            (lambda () (parse '(if : : 0 : 1))))
 (check-exn (regexp (regexp-quote "parse: ZODE: Invalid lamb argument (: i : Hello 31/7 +)"))
            (lambda () (parse '(lamb : i : "Hello" 31/7 +))))
-(check-exn (regexp (regexp-quote "parse-clause: ZODE: Invalid clause expression '(: (: = ""))"))
+(check-exn (regexp (regexp-quote "parse-clause: ZODE: Invalid clause expression '(: = \"\")"))
            (lambda () (parse '(locals : : = "" : "World"))))
+(check-exn (regexp (regexp-quote "parse-clause: ZODE: Invalid clause expression '(: = \"\")"))
+           (lambda () (parse '(locals : x = 2 : : = "" : "World"))))
 
 
 ; test cases for top-interp               
@@ -420,9 +425,10 @@
                   (list (appC (idC '+) (list (numC 9) (numC 14))) (numC 98))))
 (check-equal? (parse '{locals : x = 2 : y = 6 : {+ x y}})
             (appC (lamC '(x y) (appC (idC '+) (list (idC 'x) (idC 'y))))
-                 (list (numC 2) (numC 6))))
+                 (list (numC 2) (numC 6)))) 
  
+(top-interp (quote (seq 3 (+ 2 2)))) 
 
-; expected exception with message containing ZODE on test expression:
-; '(parse '(locals : : = "" : "World"))
-; 
+; while evaluating (top-interp (quote (seq 3 (+ 2 2)))):
+;  lookup: ZODE: Variable not found ''seq
+; Saving submission with errors.
