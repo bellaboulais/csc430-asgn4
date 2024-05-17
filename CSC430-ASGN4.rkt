@@ -427,8 +427,3 @@
             (appC (lamC '(x y) (appC (idC '+) (list (idC 'x) (idC 'y))))
                  (list (numC 2) (numC 6)))) 
  
-(top-interp (quote (seq 3 (+ 2 2)))) 
-
-; while evaluating (top-interp (quote (seq 3 (+ 2 2)))):
-;  lookup: ZODE: Variable not found ''seq
-; Saving submission with errors.
